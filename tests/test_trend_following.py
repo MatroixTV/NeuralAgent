@@ -1,41 +1,56 @@
-# Test the Trend Following Strategy
-
+import unittest
 from strategies.trend_following import TrendFollowingStrategy
 
-class MockTradeExecutor:
-    """
-    Mock Trade Executor for testing trade execution functionality.
-    """
-    def open_buy(self, symbol, lot_size, stop_loss, take_profit):
-        print(f"BUY Order: Symbol={symbol}, LotSize={lot_size}, SL={stop_loss}, TP={take_profit}")
+class TestTrendFollowingStrategy(unittest.TestCase):
+    def setUp(self):
+        self.strategy = TrendFollowingStrategy(
+            symbol="EURUSD",
+            lot_size=0.1,
+            stop_loss=50,
+            take_profit=100,
+            rsi_threshold=30,
+            ema_period=14
+        )
 
-    def open_sell(self, symbol, lot_size, stop_loss, take_profit):
-        print(f"SELL Order: Symbol={symbol}, LotSize={lot_size}, SL={stop_loss}, TP={take_profit}")
+    def test_generate_signal_buy(self):
+        """
+        Test that the strategy generates a 'buy' signal under the correct conditions.
+        """
+        market_data = {
+            "highs": [1.1 + i * 0.01 for i in range(14)],
+            "lows": [1.0 + i * 0.01 for i in range(14)],
+            "closes": [1.05 + i * 0.02 for i in range(14)]  # Adjusted closes for buy condition
+        }
+        self.strategy.setup(market_data)
+        signal = self.strategy.generate_signal()
+        self.assertEqual(signal, "buy", "Expected 'buy' signal")
 
-def test_trend_following_strategy():
-    """
-    Test the Trend Following Strategy with mock data and a mock trade executor.
-    """
-    # Mock market data for testing
-    market_data = {
-        'closes': [100, 102, 101, 103, 105, 104, 106, 107, 108, 107, 106, 105, 104, 102, 101],
-        'highs': [101, 103, 102, 104, 106, 105, 107, 108, 109, 108, 107, 106, 105, 103, 102],
-        'lows': [99, 101, 100, 102, 104, 103, 105, 106, 107, 106, 105, 104, 103, 101, 100]
-    }
+    def test_generate_signal_sell(self):
+        """
+        Test that the strategy generates a 'sell' signal under the correct conditions.
+        """
+        market_data = {
+            "highs": [1.3 - i * 0.01 for i in range(14)],
+            "lows": [1.2 - i * 0.01 for i in range(14)],
+            "closes": [1.25 - i * 0.02 for i in range(14)]  # Adjusted closes for sell condition
+        }
+        self.strategy.setup(market_data)
+        signal = self.strategy.generate_signal()
+        self.assertEqual(signal, "sell", "Expected 'sell' signal")
 
-    # Initialize the strategy and mock trade executor
-    strategy = TrendFollowingStrategy(
-        symbol="EURUSD",
-        lot_size=0.1,
-        stop_loss=50,
-        take_profit=100,
-        rsi_threshold=30,
-        ema_period=14
-    )
-    trade_executor = MockTradeExecutor()
+    def test_generate_signal_hold(self):
+        """
+        Test that the strategy generates a 'hold' signal when conditions are neutral.
+        """
+        market_data = {
+            "highs": [1.1 + i * 0.01 for i in range(14)],
+            "lows": [1.0 + i * 0.01 for i in range(14)],
+            "closes": [1.05 + (i % 2) * 0.005 for i in range(14)]  # Neutral closes
+        }
+        self.strategy.setup(market_data)
+        signal = self.strategy.generate_signal()
+        self.assertEqual(signal, "hold", "Expected 'hold' signal")
 
-    # Run the test
-    strategy.setup(market_data)
-    signal = strategy.generate_signal()
-    print(f"Generated Signal: {signal}")
-    strategy.execute_trade(signal, trade_executor)
+
+if __name__ == "__main__":
+    unittest.main()

@@ -1,43 +1,58 @@
-# Test the Mean Reversion Strategy
-
+import unittest
 from strategies.mean_reversion import MeanReversionStrategy
 
-class MockTradeExecutor:
-    """
-    Mock Trade Executor for testing trade execution functionality.
-    """
-    def open_buy(self, symbol, lot_size, stop_loss, take_profit):
-        print(f"BUY Order: Symbol={symbol}, LotSize={lot_size}, SL={stop_loss}, TP={take_profit}")
+class TestMeanReversionStrategy(unittest.TestCase):
+    def setUp(self):
+        self.strategy = MeanReversionStrategy(
+            symbol="EURUSD",
+            lot_size=0.1,
+            stop_loss=50,
+            take_profit=100,
+            rsi_threshold=30,
+            ema_period=14,
+            bollinger_period=20,
+            bollinger_std_dev=2
+        )
 
-    def open_sell(self, symbol, lot_size, stop_loss, take_profit):
-        print(f"SELL Order: Symbol={symbol}, LotSize={lot_size}, SL={stop_loss}, TP={take_profit}")
+    def test_generate_signal_buy(self):
+        """
+        Test that the strategy generates a 'buy' signal under the correct conditions.
+        """
+        market_data = {
+            "highs": [1.2 + i * 0.01 for i in range(20)],
+            "lows": [1.1 + i * 0.01 for i in range(20)],
+            "closes": [1.1 + i * 0.005 for i in range(20)]  # Below lower Bollinger Band
+        }
+        self.strategy.setup(market_data)
+        signal = self.strategy.generate_signal()
+        self.assertEqual(signal, "buy", "Expected 'buy' signal")
 
-def test_mean_reversion_strategy():
-    """
-    Test the Mean Reversion Strategy with mock data and a mock trade executor.
-    """
-    # Mock market data for testing
-    market_data = {
-        'closes': [100, 102, 101, 103, 105, 104, 106, 107, 108, 107, 106, 105, 104, 102, 101],
-        'highs': [101, 103, 102, 104, 106, 105, 107, 108, 109, 108, 107, 106, 105, 103, 102],
-        'lows': [99, 101, 100, 102, 104, 103, 105, 106, 107, 106, 105, 104, 103, 101, 100]
-    }
+    def test_generate_signal_sell(self):
+        """
+        Test that the strategy generates a 'sell' signal under the correct conditions.
+        """
+        market_data = {
+            "highs": [1.4 - i * 0.01 for i in range(20)],
+            "lows": [1.3 - i * 0.01 for i in range(20)],
+            "closes": [1.35 + i * 0.005 for i in range(20)]  # Above upper Bollinger Band
+        }
+        self.strategy.setup(market_data)
+        signal = self.strategy.generate_signal()
+        self.assertEqual(signal, "sell", "Expected 'sell' signal")
 
-    # Initialize the strategy and mock trade executor
-    strategy = MeanReversionStrategy(
-        symbol="EURUSD",
-        lot_size=0.1,
-        stop_loss=50,
-        take_profit=100,
-        rsi_threshold=30,
-        ema_period=14,
-        bollinger_period=14,
-        bollinger_std_dev=2
-    )
-    trade_executor = MockTradeExecutor()
+    def test_generate_signal_hold(self):
+        """
+        Test that the strategy generates a 'hold' signal when conditions are neutral.
+        """
+        market_data = {
+            "highs": [1.3 + i * 0.005 for i in range(20)],
+            "lows": [1.2 + i * 0.005 for i in range(20)],
+            "closes": [1.25 + (i % 2) * 0.005 for i in range(20)]  # Neutral conditions
+        }
+        self.strategy.setup(market_data)
+        signal = self.strategy.generate_signal()
+        self.assertEqual(signal, "hold", "Expected 'hold' signal")
 
-    # Run the test
-    strategy.setup(market_data)
-    signal = strategy.generate_signal()
-    print(f"Generated Signal: {signal}")
-    strategy.execute_trade(signal, trade_executor)
+
+if __name__ == "__main__":
+    unittest.main()
