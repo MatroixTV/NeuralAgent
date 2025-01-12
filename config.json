@@ -1,0 +1,12 @@
+{
+    "symbol": "EURUSD",
+    "account_balance": 10000,
+    "risk_per_trade": 1,
+    "strategy_type": "trend_following",
+    "rsi_threshold": 30,
+    "ema_period": 14,
+    "stop_loss": 50,
+    "take_profit": 100,
+    "bollinger_period": 20,
+    "bollinger_std_dev": 2
+}
