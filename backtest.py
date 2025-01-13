@@ -1,108 +1,119 @@
 import pandas as pd
-from strategies.trend_following import MLStrategy
-from utils.data_preparation import calculate_indicators
+import numpy as np
 import matplotlib.pyplot as plt
-from datetime import datetime, timedelta
+from models.ml_model import MLModel
 
+class Backtest:
+    def __init__(self, initial_balance):
+        self.initial_balance = initial_balance
+        self.equity = initial_balance
+        self.trades = []
+        self.equity_curve = [initial_balance]
+        self.max_drawdown = 0
+        self.consecutive_wins = 0
+        self.consecutive_losses = 0
+        self.current_streak = 0
+        self.current_streak_type = None  # 'win' or 'loss'
 
-class BacktestBot:
-    def __init__(self):
-        self.strategy = MLStrategy(symbol="EURUSD")
+    def calculate_performance_metrics(self):
+        profits = [trade["profit"] for trade in self.trades]
+        win_trades = [p for p in profits if p > 0]
+        loss_trades = [p for p in profits if p <= 0]
 
-    def run_backtest(self, data):
-        """
-        Run the backtest using the ML strategy.
+        # Win Rate
+        win_rate = len(win_trades) / len(profits) * 100 if profits else 0
 
-        :param data: DataFrame with historical market data
-        """
-        print("Running backtest with ML-based strategy...")
-        trades = 0
-        equity = 200  # Starting equity
-        signals = []
+        # Profit Factor
+        gross_profit = sum(win_trades)
+        gross_loss = abs(sum(loss_trades))
+        profit_factor = gross_profit / gross_loss if gross_loss > 0 else "N/A"
 
-        # Calculate required features
-        data = calculate_indicators(data).copy()
+        # Maximum Drawdown
+        peak = -np.inf
+        for eq in self.equity_curve:
+            peak = max(peak, eq)
+            self.max_drawdown = max(self.max_drawdown, peak - eq)
 
-        for i in range(len(data) - 1):
-            # Prepare market data slice
-            market_data = data.iloc[: i + 1]
+        # Maximum Consecutive Wins and Losses
+        for profit in profits:
+            if profit > 0:
+                if self.current_streak_type == "win":
+                    self.current_streak += 1
+                else:
+                    self.current_streak = 1
+                    self.current_streak_type = "win"
+                self.consecutive_wins = max(self.consecutive_wins, self.current_streak)
+            else:
+                if self.current_streak_type == "loss":
+                    self.current_streak += 1
+                else:
+                    self.current_streak = 1
+                    self.current_streak_type = "loss"
+                self.consecutive_losses = max(self.consecutive_losses, self.current_streak)
 
-            # Generate signal using ML model
-            signal = self.strategy.generate_signal(market_data)
-            signals.append(signal)
+        return {
+            "Win Rate": win_rate,
+            "Profit Factor": profit_factor,
+            "Max Drawdown": self.max_drawdown,
+            "Max Consecutive Wins": self.consecutive_wins,
+            "Max Consecutive Losses": self.consecutive_losses,
+        }
 
-            # Simulate trade (example logic)
+    def run(self, data):
+        for i, row in data.iterrows():
+            signal = row["ML_Signal"]
             if signal == "buy":
-                trades += 1
-                equity += 50  # Example profit
-            elif signal == "sell":
-                trades += 1
-                equity -= 50  # Example loss
+                entry_price = row["Close"]
+                self.trades.append({"type": "buy", "price": entry_price})
+            elif signal == "sell" and self.trades:
+                last_trade = self.trades.pop()
+                if last_trade["type"] == "buy":
+                    exit_price = row["Close"]
+                    profit = exit_price - last_trade["price"]
+                    self.equity += profit
+                    self.trades.append({"type": "sell", "profit": profit})
+                    self.equity_curve.append(self.equity)
 
-        # Add signals to the data for visualization
-        data = data.iloc[:-1].copy()
-        data["Signal"] = signals
-
-        print(f"Backtest completed: Trades={trades}, Final Equity={equity:.2f}")
-        self.visualize(data)
-
-        # Calculate metrics
-        initial_balance = 200
-        total_profit = equity - initial_balance
-        max_drawdown = initial_balance - min(equity, initial_balance)
-        buy_signals = sum([1 for s in signals if s == "buy"])
-        sell_signals = sum([1 for s in signals if s == "sell"])
-        win_rate = (buy_signals / trades) * 100 if trades > 0 else 0
-        sharpe_ratio = (total_profit / len(data)) / data["Close"].std() if data["Close"].std() != 0 else 0
-
-        # Print detailed results
-        print("\nDetailed Performance Metrics:")
-        print(f"Initial Balance: ${initial_balance:.2f}")
-        print(f"Final Equity: ${equity:.2f}")
-        print(f"Total Profit: ${total_profit:.2f}")
-        print(f"Max Drawdown: ${max_drawdown:.2f}")
-        print(f"Win Rate: {win_rate:.2f}%")
-        print(f"Sharpe Ratio: {sharpe_ratio:.2f}")
-
-    def visualize(self, data):
-        """
-        Visualize price data and ML-generated signals.
-        """
-        plt.figure(figsize=(14, 8))
-
-        # Plot close prices
+    def plot_results(self, data):
+        # Plot price with buy/sell signals
+        plt.figure(figsize=(12, 8))
+        plt.subplot(2, 1, 1)
         plt.plot(data["Date"], data["Close"], label="Close Price", color="blue")
-
-        # Plot buy/sell signals
-        buy_signals = data[data["Signal"] == "buy"]
-        sell_signals = data[data["Signal"] == "sell"]
-
-        plt.scatter(buy_signals["Date"], buy_signals["Close"], label="Buy Signal", marker="^", color="green", alpha=0.8)
-        plt.scatter(sell_signals["Date"], sell_signals["Close"], label="Sell Signal", marker="v", color="red", alpha=0.8)
-
-        plt.title("Price and ML Signals with Performance Metrics")
-        plt.xlabel("Date")
-        plt.ylabel("Price")
+        plt.scatter(data[data["ML_Signal"] == "buy"].index, data[data["ML_Signal"] == "buy"]["Close"], marker="^", color="green", label="Buy Signal")
+        plt.scatter(data[data["ML_Signal"] == "sell"].index, data[data["ML_Signal"] == "sell"]["Close"], marker="v", color="red", label="Sell Signal")
         plt.legend()
-        plt.grid()
+        plt.title("Price and Signals")
 
-        # Annotate cumulative profit
-        total_profit = (data["Signal"] == "buy").sum() * 50  # Example
-        plt.figtext(0.15, 0.8, f"Cumulative Profit: ${total_profit:.2f}", fontsize=12, color="green")
-
+        # Plot equity curve
+        plt.subplot(2, 1, 2)
+        plt.plot(self.equity_curve, label="Equity Curve", color="orange")
+        plt.legend()
+        plt.title("Equity Curve")
+        plt.tight_layout()
         plt.show()
 
 
 if __name__ == "__main__":
-    # Load historical data
-    data = pd.read_csv("utils/EURUSD_daily_cleaned.csv")
+    # Load data
+    data = pd.read_csv("training/training_data.csv")
     data["Date"] = pd.to_datetime(data["Date"])
+    model = MLModel()
+    model.load_model()
 
-    # Filter data for the last 30 days
-    end_date = pd.Timestamp.now()
-    start_date = end_date - pd.Timedelta(days=30)
-    recent_data = data[(data["Date"] >= start_date) & (data["Date"] <= end_date)]
+    # Generate ML signals
+    features = data.drop(columns=["Date", "Close"])
+    data["ML_Signal"] = model.predict(features)
+    data["ML_Signal"] = np.where(data["ML_Signal"] > 0.5, "buy", "sell")
 
-    # Run backtest
-    bot = BacktestBot()
-    bot.run_backtest(recent_data)
+    # Backtest
+    bot = Backtest(initial_balance=200)
+    bot.run(data)
+
+    # Calculate and display performance metrics
+    metrics = bot.calculate_performance_metrics()
+    print("\nDetailed Performance Metrics:")
+    for metric, value in metrics.items():
+        print(f"{metric}: {value}")
+
+    # Plot results
+    bot.plot_results(data)

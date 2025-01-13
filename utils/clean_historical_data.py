@@ -43,8 +43,8 @@ def clean_data(input_file, output_file):
 
 if __name__ == "__main__":
     # Specify input and output file paths
-    input_file = "EURUSD_daily.csv"
-    output_file = "EURUSD_daily_cleaned.csv"
+    input_file = "EURUSD_hourly.csv"
+    output_file = "EURUSD_hourly_cleaned.csv"
 
     # Run the cleaning function
     clean_data(input_file, output_file)

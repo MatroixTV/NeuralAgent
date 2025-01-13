@@ -82,7 +82,7 @@ if __name__ == "__main__":
     # Example usage
     # Assuming data.csv has features and a 'target' column
     try:
-        data = pd.read_csv("training_data.csv")
+        data = pd.read_csv("C:/Users/ismac/PycharmProjects/NeuralAgent/training/training_data.csv")
         ml_model = MLModel()
         ml_model.train(data)
 

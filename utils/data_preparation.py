@@ -13,22 +13,22 @@ def calculate_indicators(data):
     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
     rs = gain / loss
-    data["RSI"] = 100 - (100 / (1 + rs))
+    data.loc[:, "RSI"] = 100 - (100 / (1 + rs))
 
     # Calculate EMA
-    data["EMA"] = data["Close"].ewm(span=14, adjust=False).mean()
+    data.loc[:, "EMA"] = data["Close"].ewm(span=14, adjust=False).mean()
 
     # Calculate ATR
     high_low = data["High"] - data["Low"]
     high_close = np.abs(data["High"] - data["Close"].shift())
     low_close = np.abs(data["Low"] - data["Close"].shift())
     tr = high_low.combine(high_close, max).combine(low_close, max)
-    data["ATR"] = tr.rolling(window=14).mean()
+    data.loc[:, "ATR"] = tr.rolling(window=14).mean()
 
     # Calculate Bollinger Bands
-    data["Bollinger_Mid"] = data["Close"].rolling(window=20).mean()
-    data["Bollinger_Upper"] = data["Bollinger_Mid"] + 2 * data["Close"].rolling(window=20).std()
-    data["Bollinger_Lower"] = data["Bollinger_Mid"] - 2 * data["Close"].rolling(window=20).std()
+    data.loc[:, "Bollinger_Mid"] = data["Close"].rolling(window=20).mean()
+    data.loc[:, "Bollinger_Upper"] = data["Bollinger_Mid"] + 2 * data["Close"].rolling(window=20).std()
+    data.loc[:, "Bollinger_Lower"] = data["Bollinger_Mid"] - 2 * data["Close"].rolling(window=20).std()
 
     return data
 
@@ -78,4 +78,4 @@ def prepare_dataset(input_file, output_file):
 
 if __name__ == "__main__":
     # Example usage
-    prepare_dataset(input_file="EURUSD_daily_cleaned.csv", output_file="../training/training_data.csv")
+    prepare_dataset(input_file="EURUSD_hourly_cleaned.csv", output_file="../training/training_data.csv")
