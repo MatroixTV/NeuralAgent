@@ -1,169 +1,157 @@
-import MetaTrader5 as mt5
 import pandas as pd
-from utils.logger import Logger
-from utils.config_loader import ConfigLoader
-from utils.data_fetcher import DataFetcher
+import matplotlib.pyplot as plt
 from strategies.trend_following import TrendFollowingStrategy
 from strategies.mean_reversion import MeanReversionStrategy
-from trade_management.trade_executor import TradeExecutor
-from trade_management.risk_manager import RiskManager
 
 class BacktestBot:
     """
-    Simulates the trading bot's behavior using historical data for backtesting.
+    Simulates the trading bot's performance using historical data.
     """
 
-    def __init__(self, config_file="config.json"):
-        self.logger = Logger()
-        self.logger.info("Loading configuration...")
-        self.config = ConfigLoader.load_config(config_file)
-        if not self.config:
-            raise ValueError("Failed to load configuration file")
+    def __init__(self, strategy_type="trend_following"):
+        self.strategy_type = strategy_type
 
-        self.symbol = self.config["symbol"]
-        self.account_balance = self.config["account_balance"]
-        self.risk_per_trade = self.config["risk_per_trade"]
-        self.initial_balance = self.account_balance
-        self.trade_executor = TradeExecutor(self.symbol)
-        self.risk_manager = RiskManager(self.account_balance, self.risk_per_trade)
-
-        # Select strategy
-        strategy_type = self.config.get("strategy_type", "trend_following")
+        # Initialize strategy
         if strategy_type == "trend_following":
             self.strategy = TrendFollowingStrategy(
-                symbol=self.symbol,
+                symbol="EURUSD",
                 lot_size=0.1,
-                stop_loss=self.config["stop_loss"],
-                take_profit=self.config["take_profit"],
-                rsi_threshold=self.config["rsi_threshold"],
-                ema_period=self.config["ema_period"]
+                stop_loss=50,
+                take_profit=100,
+                rsi_threshold=30,
+                ema_period=14
             )
         elif strategy_type == "mean_reversion":
             self.strategy = MeanReversionStrategy(
-                symbol=self.symbol,
+                symbol="EURUSD",
                 lot_size=0.1,
-                stop_loss=self.config["stop_loss"],
-                take_profit=self.config["take_profit"],
-                rsi_threshold=self.config["rsi_threshold"],
-                ema_period=self.config["ema_period"],
-                bollinger_period=self.config["bollinger_period"],
-                bollinger_std_dev=self.config["bollinger_std_dev"]
+                stop_loss=50,
+                take_profit=100,
+                rsi_threshold=30,
+                ema_period=14,
+                bollinger_period=20,
+                bollinger_std_dev=2
             )
         else:
             raise ValueError(f"Unsupported strategy type: {strategy_type}")
 
-        self.logger.info(f"Selected strategy: {strategy_type}")
+    def visualize_indicators(self, data, indicators):
+        """
+        Visualize price data and indicators.
 
-    def fetch_historical_data(self, num_candles=5000):
+        :param data: Historical price data (DataFrame)
+        :param indicators: Calculated indicators (dict)
         """
-        Fetch a large amount of historical data for backtesting.
-        :param num_candles: Number of historical candles to fetch
-        :return: DataFrame with market data
-        """
-        self.logger.info(f"Fetching {num_candles} historical candles for {self.symbol}...")
-        try:
-            df = DataFetcher.fetch_data(self.symbol, num_candles=num_candles)
-            self.logger.info("Historical market data fetched successfully")
-            return df
-        except Exception as e:
-            self.logger.error(f"Failed to fetch historical data: {e}")
-            return None
+        plt.figure(figsize=(14, 8))
 
-    def run_backtest(self, num_candles=5000):
-        """
-        Run the backtest simulation.
-        :param num_candles: Number of historical candles to use for backtesting
-        """
-        # Fetch historical data
-        df = self.fetch_historical_data(num_candles)
-        if df is None:
-            self.logger.error("No historical data available. Exiting backtest.")
-            return
+        # Plot price data
+        plt.plot(data['Date'], data['Close'], label="Close Price", color="blue")
 
+        # Plot EMA (only if available)
+        if "ema" in indicators and any(indicators["ema"]):
+            plt.plot(data['Date'][:len(indicators["ema"])], indicators["ema"], label="EMA", color="orange")
+
+        # Plot Bollinger Bands (if available)
+        if "upper_band" in indicators and "lower_band" in indicators:
+            if any(indicators["upper_band"]) and any(indicators["lower_band"]):
+                plt.plot(data['Date'][:len(indicators["upper_band"])], indicators["upper_band"], label="Bollinger Upper", color="green", linestyle="--")
+                plt.plot(data['Date'][:len(indicators["lower_band"])], indicators["lower_band"], label="Bollinger Lower", color="red", linestyle="--")
+
+        plt.title("Price and Indicators")
+        plt.xlabel("Date")
+        plt.ylabel("Price")
+        plt.legend()
+        plt.grid()
+        plt.show()
+
+    def run_backtest(self, data):
+        """
+        Run the backtest on the provided historical data.
+        :param data: DataFrame containing historical price data
+        """
+        indicators_log = {"ema": [], "upper_band": [], "lower_band": []}  # To store indicator values
         trades = 0
         wins = 0
         losses = 0
         profit = 0
-        max_drawdown = 0
-        peak_balance = self.account_balance
+        equity = 10000  # Starting equity
 
-        # Loop through each candle
-        for i in range(self.config["ema_period"], len(df)):
+        print(f"Running backtest with {self.strategy_type} strategy...")
+
+        # Loop through each row
+        for i in range(max(self.strategy.ema_period, self.strategy.rsi_threshold), len(data)):
             market_data = {
-                "highs": df["high"][:i].values,
-                "lows": df["low"][:i].values,
-                "closes": df["close"][:i].values
+                "highs": data["High"][:i].values,
+                "lows": data["Low"][:i].values,
+                "closes": data["Close"][:i].values
             }
-
-            # Setup strategy with partial data
             self.strategy.setup(market_data)
+
+            # Collect indicator values
+            indicators_log["ema"].append(self.strategy.indicators.get("ema"))
+            indicators_log["upper_band"].append(self.strategy.indicators.get("upper_band"))
+            indicators_log["lower_band"].append(self.strategy.indicators.get("lower_band"))
 
             # Generate signal
             signal = self.strategy.generate_signal()
+            print(f"Date: {data['Date'].iloc[i]}, Signal: {signal}")
+
+            # Simulate trade
             if signal in ["buy", "sell"]:
                 trades += 1
-                lot_size = self.risk_manager.calculate_lot_size(
-                    stop_loss_pips=self.config["stop_loss"],
-                    pip_value=10
-                )
-                self.strategy.lot_size = lot_size
-
-                # Simulate trade outcome
-                trade_result = self.simulate_trade(signal, market_data, i, df)
-                profit += trade_result
-                if trade_result > 0:
+                result = self.simulate_trade(signal, data.iloc[i])
+                equity += result
+                profit += result
+                if result > 0:
                     wins += 1
                 else:
                     losses += 1
 
-                # Track drawdown
-                self.account_balance += trade_result
-                if self.account_balance > peak_balance:
-                    peak_balance = self.account_balance
-                drawdown = peak_balance - self.account_balance
-                max_drawdown = max(max_drawdown, drawdown)
+        # Visualize indicators
+        try:
+            self.visualize_indicators(data, indicators_log)
+        except Exception as e:
+            print(f"Error during visualization: {e}")
 
-        win_rate = (wins / trades) * 100 if trades > 0 else 0
+        print(
+            f"Backtest completed: Trades={trades}, Wins={wins}, Losses={losses}, Profit={profit:.2f}, Final Equity={equity:.2f}"
+        )
 
-        # Log results
-        self.logger.info(f"Backtest completed: {trades} trades executed")
-        self.logger.info(f"Total Profit: {profit:.2f}")
-        self.logger.info(f"Win Rate: {win_rate:.2f}%")
-        self.logger.info(f"Max Drawdown: {max_drawdown:.2f}")
-        self.logger.info(f"Final Balance: {self.account_balance:.2f}")
-
-    def simulate_trade(self, signal, market_data, current_index, df):
+    def simulate_trade(self, signal, row):
         """
-        Simulate the outcome of a trade.
+        Simulates the outcome of a trade based on the signal and current row of data.
+
         :param signal: 'buy' or 'sell'
-        :param market_data: Market data up to the current index
-        :param current_index: Current index in the historical data
-        :param df: Full historical data
-        :return: Simulated trade profit/loss
+        :param row: Current row of historical data
+        :return: Simulated profit/loss
         """
-        entry_price = market_data["closes"][-1]
-        sl_pips = self.config["stop_loss"] / 10000
-        tp_pips = self.config["take_profit"] / 10000
+        entry_price = row["Close"]
+        sl_pips = self.strategy.stop_loss / 10000
+        tp_pips = self.strategy.take_profit / 10000
 
         if signal == "buy":
             stop_loss = entry_price - sl_pips
             take_profit = entry_price + tp_pips
-            for j in range(current_index + 1, len(df)):
-                if df["low"].iloc[j] <= stop_loss:
-                    return -sl_pips * 100
-                if df["high"].iloc[j] >= take_profit:
-                    return tp_pips * 100
+            if row["Low"] <= stop_loss:
+                return -sl_pips * 10000
+            elif row["High"] >= take_profit:
+                return tp_pips * 10000
         elif signal == "sell":
             stop_loss = entry_price + sl_pips
             take_profit = entry_price - tp_pips
-            for j in range(current_index + 1, len(df)):
-                if df["high"].iloc[j] >= stop_loss:
-                    return -sl_pips * 100
-                if df["low"].iloc[j] <= take_profit:
-                    return tp_pips * 100
+            if row["High"] >= stop_loss:
+                return -sl_pips * 10000
+            elif row["Low"] <= take_profit:
+                return tp_pips * 10000
         return 0
 
 
 if __name__ == "__main__":
-    backtester = BacktestBot(config_file="config.json")
-    backtester.run_backtest(num_candles=500)
+    # Load historical data
+    data = pd.read_csv("utils/EURUSD_daily_cleaned.csv")
+    data["Date"] = pd.to_datetime(data["Date"])
+
+    # Run backtest for each strategy
+    for strategy in ["trend_following", "mean_reversion"]:
+        bot = BacktestBot(strategy_type=strategy)
+        bot.run_backtest(data)

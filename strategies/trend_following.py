@@ -23,22 +23,32 @@ class TrendFollowingStrategy(BaseStrategy):
 
     def generate_signal(self):
         """
-        Generate a trading signal based on trend-following logic.
+        Generate a trading signal based on strategy logic.
         :return: 'buy', 'sell', or 'hold'
         """
-        rsi = self.indicators['rsi']
-        ema = self.indicators['ema']
-        current_price = self.indicators['current_price']
+        # Retrieve indicator values
+        rsi = self.indicators.get('rsi')
+        ema = self.indicators.get('ema')
+        current_price = self.indicators.get('current_price')
 
-        # Buy signal: Oversold RSI and price above EMA
+        # Debug: Log indicator values
+        print(f"Debug - RSI: {rsi}, EMA: {ema}, Current Price: {current_price}")
+
+        # Example: Adjust conditions based on strategy type
+        if hasattr(self, 'bollinger_upper') and hasattr(self, 'bollinger_lower'):  # For mean reversion
+            bollinger_upper = self.indicators.get('upper_band')
+            bollinger_lower = self.indicators.get('lower_band')
+            print(f"Debug - Bollinger Upper: {bollinger_upper}, Lower: {bollinger_lower}")
+
+        # Example Buy/Sell conditions
         if rsi < self.rsi_threshold and current_price > ema:
+            print("Signal: Buy")
             return 'buy'
-
-        # Sell signal: Overbought RSI and price below EMA
         elif rsi > (100 - self.rsi_threshold) and current_price < ema:
+            print("Signal: Sell")
             return 'sell'
 
-        # Otherwise, hold
+        print("Signal: Hold")
         return 'hold'
 
     def setup(self, market_data):
