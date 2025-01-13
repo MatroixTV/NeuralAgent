@@ -57,8 +57,8 @@ if __name__ == "__main__":
     collector = YahooFinanceDataCollector(symbol="EURUSD=X")
 
     # Define date range and intervals
-    start_date = "2010-01-01"
-    end_date = "2023-12-31"
+    start_date = "2024-12-13"
+    end_date = "2025-01-13"
     interval = "1d"  # '1d' for daily data
 
     try:

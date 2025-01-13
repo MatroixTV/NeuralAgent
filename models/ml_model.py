@@ -1,4 +1,5 @@
 import pandas as pd
+import os
 import numpy as np
 import joblib
 from sklearn.ensemble import RandomForestClassifier
@@ -7,8 +8,9 @@ from sklearn.metrics import accuracy_score, classification_report
 
 class MLModel:
     def __init__(self):
+        # Save models in the same directory as this script
+        self.model_path = os.path.join(os.path.dirname(__file__), "ml_model.pkl")
         self.model = None
-        self.model_path = "models/ml_model.pkl"
 
     def prepare_data(self, data):
         """
@@ -17,7 +19,8 @@ class MLModel:
         :param data: DataFrame containing features and target
         :return: X_train, X_test, y_train, y_test
         """
-        features = data.drop(columns=["target"])
+        # Exclude the 'Date' column from features
+        features = data.drop(columns=["target", "Date"])  # Exclude 'Date'
         target = data["target"]
         X_train, X_test, y_train, y_test = train_test_split(features, target, test_size=0.2, random_state=42)
         return X_train, X_test, y_train, y_test
@@ -47,7 +50,9 @@ class MLModel:
         """
         Save the trained model to disk.
         """
+        os.makedirs(os.path.dirname(self.model_path), exist_ok=True)  # Ensure directory exists
         joblib.dump(self.model, self.model_path)
+        print(f"Model saved to {self.model_path}")
 
     def load_model(self):
         """
@@ -57,7 +62,7 @@ class MLModel:
             self.model = joblib.load(self.model_path)
             print("Model loaded successfully.")
         except FileNotFoundError:
-            print("No trained model found. Please train the model first.")
+            print(f"No trained model found at {self.model_path}. Please train the model first.")
 
     def predict(self, features):
         """

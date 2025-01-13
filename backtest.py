@@ -1,149 +1,96 @@
 import pandas as pd
+from strategies.trend_following import MLStrategy
+from utils.data_preparation import calculate_indicators
 import matplotlib.pyplot as plt
-from strategies.trend_following import TrendFollowingStrategy
-from strategies.mean_reversion import MeanReversionStrategy
+from datetime import datetime, timedelta
+
 
 class BacktestBot:
-    """
-    Simulates the trading bot's performance using historical data.
-    """
+    def __init__(self):
+        self.strategy = MLStrategy(symbol="EURUSD")
 
-    def __init__(self, strategy_type="trend_following"):
-        self.strategy_type = strategy_type
-
-        # Initialize strategy
-        if strategy_type == "trend_following":
-            self.strategy = TrendFollowingStrategy(
-                symbol="EURUSD",
-                lot_size=0.1,
-                stop_loss=50,
-                take_profit=100,
-                rsi_threshold=30,
-                ema_period=14
-            )
-        elif strategy_type == "mean_reversion":
-            self.strategy = MeanReversionStrategy(
-                symbol="EURUSD",
-                lot_size=0.1,
-                stop_loss=50,
-                take_profit=100,
-                rsi_threshold=30,
-                ema_period=14,
-                bollinger_period=20,
-                bollinger_std_dev=2
-            )
-        else:
-            raise ValueError(f"Unsupported strategy type: {strategy_type}")
-
-    def visualize_indicators(self, data, indicators):
+    def run_backtest(self, data):
         """
-        Visualize price data and indicators.
+        Run the backtest using the ML strategy.
 
-        :param data: Historical price data (DataFrame)
-        :param indicators: Calculated indicators (dict)
+        :param data: DataFrame with historical market data
+        """
+        print("Running backtest with ML-based strategy...")
+        trades = 0
+        equity = 200  # Starting equity
+        signals = []
+
+        # Calculate required features
+        data = calculate_indicators(data).copy()
+
+        for i in range(len(data) - 1):
+            # Prepare market data slice
+            market_data = data.iloc[: i + 1]
+
+            # Generate signal using ML model
+            signal = self.strategy.generate_signal(market_data)
+            signals.append(signal)
+
+            # Simulate trade (example logic)
+            if signal == "buy":
+                trades += 1
+                equity += 50  # Example profit
+            elif signal == "sell":
+                trades += 1
+                equity -= 50  # Example loss
+
+        # Add signals to the data for visualization
+        data = data.iloc[:-1].copy()
+        data["Signal"] = signals
+
+        print(f"Backtest completed: Trades={trades}, Final Equity={equity:.2f}")
+        self.visualize(data)
+
+        # Calculate metrics
+        initial_balance = 200
+        total_profit = equity - initial_balance
+        max_drawdown = initial_balance - min(equity, initial_balance)
+        buy_signals = sum([1 for s in signals if s == "buy"])
+        sell_signals = sum([1 for s in signals if s == "sell"])
+        win_rate = (buy_signals / trades) * 100 if trades > 0 else 0
+        sharpe_ratio = (total_profit / len(data)) / data["Close"].std() if data["Close"].std() != 0 else 0
+
+        # Print detailed results
+        print("\nDetailed Performance Metrics:")
+        print(f"Initial Balance: ${initial_balance:.2f}")
+        print(f"Final Equity: ${equity:.2f}")
+        print(f"Total Profit: ${total_profit:.2f}")
+        print(f"Max Drawdown: ${max_drawdown:.2f}")
+        print(f"Win Rate: {win_rate:.2f}%")
+        print(f"Sharpe Ratio: {sharpe_ratio:.2f}")
+
+    def visualize(self, data):
+        """
+        Visualize price data and ML-generated signals.
         """
         plt.figure(figsize=(14, 8))
 
-        # Plot price data
-        plt.plot(data['Date'], data['Close'], label="Close Price", color="blue")
+        # Plot close prices
+        plt.plot(data["Date"], data["Close"], label="Close Price", color="blue")
 
-        # Plot EMA (only if available)
-        if "ema" in indicators and any(indicators["ema"]):
-            plt.plot(data['Date'][:len(indicators["ema"])], indicators["ema"], label="EMA", color="orange")
+        # Plot buy/sell signals
+        buy_signals = data[data["Signal"] == "buy"]
+        sell_signals = data[data["Signal"] == "sell"]
 
-        # Plot Bollinger Bands (if available)
-        if "upper_band" in indicators and "lower_band" in indicators:
-            if any(indicators["upper_band"]) and any(indicators["lower_band"]):
-                plt.plot(data['Date'][:len(indicators["upper_band"])], indicators["upper_band"], label="Bollinger Upper", color="green", linestyle="--")
-                plt.plot(data['Date'][:len(indicators["lower_band"])], indicators["lower_band"], label="Bollinger Lower", color="red", linestyle="--")
+        plt.scatter(buy_signals["Date"], buy_signals["Close"], label="Buy Signal", marker="^", color="green", alpha=0.8)
+        plt.scatter(sell_signals["Date"], sell_signals["Close"], label="Sell Signal", marker="v", color="red", alpha=0.8)
 
-        plt.title("Price and Indicators")
+        plt.title("Price and ML Signals with Performance Metrics")
         plt.xlabel("Date")
         plt.ylabel("Price")
         plt.legend()
         plt.grid()
+
+        # Annotate cumulative profit
+        total_profit = (data["Signal"] == "buy").sum() * 50  # Example
+        plt.figtext(0.15, 0.8, f"Cumulative Profit: ${total_profit:.2f}", fontsize=12, color="green")
+
         plt.show()
-
-    def run_backtest(self, data):
-        """
-        Run the backtest on the provided historical data.
-        :param data: DataFrame containing historical price data
-        """
-        indicators_log = {"ema": [], "upper_band": [], "lower_band": []}  # To store indicator values
-        trades = 0
-        wins = 0
-        losses = 0
-        profit = 0
-        equity = 10000  # Starting equity
-
-        print(f"Running backtest with {self.strategy_type} strategy...")
-
-        # Loop through each row
-        for i in range(max(self.strategy.ema_period, self.strategy.rsi_threshold), len(data)):
-            market_data = {
-                "highs": data["High"][:i].values,
-                "lows": data["Low"][:i].values,
-                "closes": data["Close"][:i].values
-            }
-            self.strategy.setup(market_data)
-
-            # Collect indicator values
-            indicators_log["ema"].append(self.strategy.indicators.get("ema"))
-            indicators_log["upper_band"].append(self.strategy.indicators.get("upper_band"))
-            indicators_log["lower_band"].append(self.strategy.indicators.get("lower_band"))
-
-            # Generate signal
-            signal = self.strategy.generate_signal()
-            print(f"Date: {data['Date'].iloc[i]}, Signal: {signal}")
-
-            # Simulate trade
-            if signal in ["buy", "sell"]:
-                trades += 1
-                result = self.simulate_trade(signal, data.iloc[i])
-                equity += result
-                profit += result
-                if result > 0:
-                    wins += 1
-                else:
-                    losses += 1
-
-        # Visualize indicators
-        try:
-            self.visualize_indicators(data, indicators_log)
-        except Exception as e:
-            print(f"Error during visualization: {e}")
-
-        print(
-            f"Backtest completed: Trades={trades}, Wins={wins}, Losses={losses}, Profit={profit:.2f}, Final Equity={equity:.2f}"
-        )
-
-    def simulate_trade(self, signal, row):
-        """
-        Simulates the outcome of a trade based on the signal and current row of data.
-
-        :param signal: 'buy' or 'sell'
-        :param row: Current row of historical data
-        :return: Simulated profit/loss
-        """
-        entry_price = row["Close"]
-        sl_pips = self.strategy.stop_loss / 10000
-        tp_pips = self.strategy.take_profit / 10000
-
-        if signal == "buy":
-            stop_loss = entry_price - sl_pips
-            take_profit = entry_price + tp_pips
-            if row["Low"] <= stop_loss:
-                return -sl_pips * 10000
-            elif row["High"] >= take_profit:
-                return tp_pips * 10000
-        elif signal == "sell":
-            stop_loss = entry_price + sl_pips
-            take_profit = entry_price - tp_pips
-            if row["High"] >= stop_loss:
-                return -sl_pips * 10000
-            elif row["Low"] <= take_profit:
-                return tp_pips * 10000
-        return 0
 
 
 if __name__ == "__main__":
@@ -151,7 +98,11 @@ if __name__ == "__main__":
     data = pd.read_csv("utils/EURUSD_daily_cleaned.csv")
     data["Date"] = pd.to_datetime(data["Date"])
 
-    # Run backtest for each strategy
-    for strategy in ["trend_following", "mean_reversion"]:
-        bot = BacktestBot(strategy_type=strategy)
-        bot.run_backtest(data)
+    # Filter data for the last 30 days
+    end_date = pd.Timestamp.now()
+    start_date = end_date - pd.Timedelta(days=30)
+    recent_data = data[(data["Date"] >= start_date) & (data["Date"] <= end_date)]
+
+    # Run backtest
+    bot = BacktestBot()
+    bot.run_backtest(recent_data)
