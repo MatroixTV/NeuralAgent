@@ -78,4 +78,4 @@ def prepare_dataset(input_file, output_file):
 
 if __name__ == "__main__":
     # Example usage
-    prepare_dataset(input_file="EURUSD_hourly_cleaned.csv", output_file="../training/training_data.csv")
+    prepare_dataset(input_file="EURUSD_daily_cleaned.csv", output_file="../training/training_data.csv")
