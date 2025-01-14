@@ -1,50 +1,43 @@
+import os
 import pandas as pd
 
-def clean_data(input_file, output_file):
-    """
-    Cleans historical Forex data to ensure compatibility with backtesting.
+class HistoricalDataCleaner:
+    def __init__(self, input_dir="data", output_dir="cleaned_data"):
+        self.input_dir = input_dir
+        self.output_dir = output_dir
+        os.makedirs(self.output_dir, exist_ok=True)
 
-    :param input_file: Path to the raw CSV file
-    :param output_file: Path to save the cleaned CSV file
-    """
-    try:
-        # Load the raw data
-        data = pd.read_csv(input_file)
+    def clean_file(self, file_path):
+        try:
+            print(f"Cleaning file: {file_path}...")
+            df = pd.read_csv(file_path)
 
-        # Display original column names for debugging
-        print("Original Columns:", data.columns)
+            # Ensure proper column names
+            expected_columns = {"time": "date", "open": "open", "high": "high", "low": "low", "close": "close"}
+            df.rename(columns=expected_columns, inplace=True)
 
-        # Rename columns to standard format
-        data = data.rename(columns={
-            "date": "Date",
-            "open": "Open",
-            "high": "High",
-            "low": "Low",
-            "close": "Close"
-        })
+            # Parse the date column
+            df["date"] = pd.to_datetime(df["date"], errors="coerce")
 
-        # Ensure the Date column is properly formatted
-        if "Date" in data.columns:
-            data["Date"] = pd.to_datetime(data["Date"])
-        else:
-            raise ValueError("The input file is missing the 'Date' column.")
+            # Drop rows with missing dates or prices
+            df.dropna(subset=["date", "open", "high", "low", "close"], inplace=True)
 
-        # Sort data by date (ascending)
-        data = data.sort_values(by="Date")
+            # Sort by date
+            df.sort_values(by="date", inplace=True)
 
-        # Remove any rows with missing or invalid data
-        data = data.dropna()
+            # Save the cleaned file
+            output_file = os.path.join(self.output_dir, os.path.basename(file_path))
+            df.to_csv(output_file, index=False)
+            print(f"Cleaned data saved to {output_file}")
+        except Exception as e:
+            print(f"Error cleaning {file_path}: {e}")
 
-        # Save the cleaned data to a new file
-        data.to_csv(output_file, index=False)
-        print(f"Cleaned data saved to {output_file}")
-    except Exception as e:
-        print(f"Error during cleaning: {e}")
+    def clean_all_files(self):
+        for file_name in os.listdir(self.input_dir):
+            file_path = os.path.join(self.input_dir, file_name)
+            if os.path.isfile(file_path):
+                self.clean_file(file_path)
 
 if __name__ == "__main__":
-    # Specify input and output file paths
-    input_file = "EURUSD_hourly.csv"
-    output_file = "EURUSD_hourly_cleaned.csv"
-
-    # Run the cleaning function
-    clean_data(input_file, output_file)
+    cleaner = HistoricalDataCleaner(input_dir="data", output_dir="cleaned_data")
+    cleaner.clean_all_files()

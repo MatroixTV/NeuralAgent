@@ -3,7 +3,7 @@ import pandas as pd
 import os
 
 # Directory where your data is stored
-DATA_DIR = "C:/Users/ismac/PycharmProjects/NeuralAgent/utils/data"  # Adjust this if needed
+DATA_DIR = "C:/Users/ismac/PycharmProjects/NeuralAgent/utils/prepared_data"  # Adjust this if needed
 
 @pytest.mark.parametrize("file_name", os.listdir(DATA_DIR))
 def test_data_files(file_name):

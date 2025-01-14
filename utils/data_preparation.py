@@ -1,69 +1,48 @@
-import pandas as pd
 import os
+import pandas as pd
+from utils.clean_historical_data import HistoricalDataCleaner
 
 class DataPreparer:
-    def calculate_indicators(self, data):
-        """
-        Calculate technical indicators and add them to the dataset.
-        """
+    def __init__(self, input_dir, output_dir):
+        self.input_dir = input_dir
+        self.output_dir = output_dir
+        os.makedirs(output_dir, exist_ok=True)
+
+    def clean_and_prepare(self, file_path):
         try:
-            # RSI
-            delta = data["close"].diff()
-            gain = delta.where(delta > 0, 0).rolling(window=14).mean()
-            loss = -delta.where(delta < 0, 0).rolling(window=14).mean()
-            rs = gain / loss
-            data["RSI"] = 100 - (100 / (1 + rs))
+            # Step 1: Clean the data
+            cleaner = HistoricalDataCleaner(input_dir=self.input_dir, output_dir="cleaned_temp")
+            cleaner.clean_file(file_path)
+            cleaned_file = os.path.join("cleaned_temp", os.path.basename(file_path))
+            cleaned_data = pd.read_csv(cleaned_file)
 
-            # EMA
-            data["EMA"] = data["close"].ewm(span=14, adjust=False).mean()
+            # Step 2: Calculate indicators
+            print(f"Calculating indicators for {file_path}...")
+            cleaned_data["RSI"] = self.calculate_rsi(cleaned_data["close"], period=14)
+            cleaned_data["EMA"] = cleaned_data["close"].ewm(span=14, adjust=False).mean()
 
-            # ATR
-            high_low = data["high"] - data["low"]
-            high_close = abs(data["high"] - data["close"].shift())
-            low_close = abs(data["low"] - data["close"].shift())
-            tr = high_low.combine(high_close, max).combine(low_close, max)
-            data["ATR"] = tr.rolling(window=14).mean()
-
-            # Bollinger Bands
-            data["Bollinger_Mid"] = data["close"].rolling(window=20).mean()
-            data["Bollinger_Upper"] = data["Bollinger_Mid"] + 2 * data["close"].rolling(window=20).std()
-            data["Bollinger_Lower"] = data["Bollinger_Mid"] - 2 * data["close"].rolling(window=20).std()
-
+            # Save the prepared data
+            output_file = os.path.join(self.output_dir, os.path.basename(file_path))
+            cleaned_data.to_csv(output_file, index=False)
+            print(f"Prepared data saved to {output_file}")
         except Exception as e:
-            print(f"Error calculating indicators: {e}")
-        return data
+            print(f"Error preparing {file_path}: {e}")
+
+    def calculate_rsi(self, prices, period):
+        delta = prices.diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+        rs = gain / loss
+        return 100 - (100 / (1 + rs))
 
     def prepare_all(self):
-        """
-        Prepare all datasets in the input directory.
-        """
-        for file in os.listdir(self.input_dir):
-            if file.endswith(".csv"):
-                filepath = os.path.join(self.input_dir, file)
-                try:
-                    data = pd.read_csv(filepath)
+        for file_name in os.listdir(self.input_dir):
+            file_path = os.path.join(self.input_dir, file_name)
+            print(f"Preparing {file_path}...")
+            self.clean_and_prepare(file_path)
 
-                    # Ensure columns exist and convert types
-                    if "Datetime" in data.columns:
-                        data.rename(columns={"Datetime": "date"}, inplace=True)
-                    if "Date" in data.columns:
-                        data.rename(columns={"Date": "date"}, inplace=True)
-
-                    # Ensure numeric conversion
-                    for col in ["open", "high", "low", "close"]:
-                        data[col] = pd.to_numeric(data[col], errors="coerce")
-
-                    # Convert 'date' column to datetime
-                    data["date"] = pd.to_datetime(data["date"])
-
-                    # Calculate indicators and drop rows with NaN
-                    data = self.calculate_indicators(data)
-                    data.dropna(inplace=True)
-
-                    # Save prepared data
-                    output_path = os.path.join(self.output_dir, file)
-                    data.to_csv(output_path, index=False)
-                    print(f"Prepared data saved to {output_path}")
-                except Exception as e:
-                    print(f"Error preparing {file}: {e}")
-
+if __name__ == "__main__":
+    input_dir = "data"
+    output_dir = "prepared_data"
+    preparer = DataPreparer(input_dir=input_dir, output_dir=output_dir)
+    preparer.prepare_all()
