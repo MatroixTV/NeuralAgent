@@ -1,82 +1,87 @@
-import pandas as pd
+import pickle
 import os
-import numpy as np
-import joblib
-from sklearn.ensemble import RandomForestClassifier
+import pandas as pd
 from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, classification_report
 
 class MLModel:
     def __init__(self):
-        # Save models in the same directory as this script
         self.model_path = os.path.join(os.path.dirname(__file__), "ml_model.pkl")
         self.model = None
-
-    def prepare_data(self, data):
-        """
-        Prepares data for training and testing.
-
-        :param data: DataFrame containing features and target
-        :return: X_train, X_test, y_train, y_test
-        """
-        # Exclude the 'Date' column from features
-        features = data.drop(columns=["target", "Date"])  # Exclude 'Date'
-        target = data["target"]
-        X_train, X_test, y_train, y_test = train_test_split(features, target, test_size=0.2, random_state=42)
-        return X_train, X_test, y_train, y_test
+        self.feature_names = None  # To track feature names during training
 
     def train(self, data):
         """
-        Train the machine learning model.
-
-        :param data: DataFrame containing features and target
+        Train the ML model using the provided data.
         """
-        X_train, X_test, y_train, y_test = self.prepare_data(data)
-
         print("Training the model...")
-        self.model = RandomForestClassifier(n_estimators=100, random_state=42)
+        # Prepare features and target
+        features = data.drop(columns=["target", "Date"])  # Exclude target and Date
+        self.feature_names = features.columns.tolist()  # Save feature names
+        target = data["target"]
+
+        # Check dataset size
+        if len(features) < 2:
+            raise ValueError("Insufficient data for training. Provide a dataset with at least 2 samples.")
+
+        # Train-test split
+        if len(features) > 5:  # Split if enough samples are available
+            X_train, X_test, y_train, y_test = train_test_split(features, target, test_size=0.2, random_state=42)
+        else:  # Use the entire dataset if it's small
+            print("Dataset is small; using entire data for training.")
+            X_train, X_test, y_train, y_test = features, features, target, target
+
+        # Train the RandomForest model
+        self.model = RandomForestClassifier(random_state=42)
         self.model.fit(X_train, y_train)
 
         # Evaluate the model
         predictions = self.model.predict(X_test)
-        print("Accuracy:", accuracy_score(y_test, predictions))
-        print("Classification Report:\n", classification_report(y_test, predictions))
+        print(f"Accuracy: {accuracy_score(y_test, predictions)}")
+        print(f"Classification Report:\n{classification_report(y_test, predictions)}")
 
-        # Save the trained model
-        self.save_model()
-        print("Model training completed and saved.")
+    def save_model(self, model_path=None):
+        """
+        Save the trained model to a file.
+        """
+        path = model_path or self.model_path
+        with open(path, "wb") as file:
+            pickle.dump(self.model, file)
+        print(f"Model saved to {path}")
 
-    def save_model(self):
+    def load_model(self, model_path=None):
         """
-        Save the trained model to disk.
+        Load the trained model from a file.
         """
-        os.makedirs(os.path.dirname(self.model_path), exist_ok=True)  # Ensure directory exists
-        joblib.dump(self.model, self.model_path)
-        print(f"Model saved to {self.model_path}")
+        path = model_path or self.model_path
+        with open(path, "rb") as file:
+            self.model = pickle.load(file)
+        print("Model loaded successfully.")
 
-    def load_model(self):
+        # Check if feature names are available
+        if hasattr(self.model, "feature_names_in_"):
+            self.feature_names = self.model.feature_names_in_
+        else:
+            raise ValueError(
+                "The loaded model does not have feature names. Ensure the model was trained with proper feature tracking."
+            )
+
+    def get_feature_names(self):
         """
-        Load the trained model from disk.
+        Get the feature names used during training.
         """
-        try:
-            self.model = joblib.load(self.model_path)
-            print("Model loaded successfully.")
-        except FileNotFoundError:
-            print(f"No trained model found at {self.model_path}. Please train the model first.")
+        if not self.feature_names:
+            raise ValueError("Feature names are not available. Train the model first.")
+        return self.feature_names
 
     def predict(self, features):
         """
-        Make predictions with the trained model.
-
-        :param features: DataFrame or array of features
-        :return: Predictions
+        Make predictions using the trained model.
         """
         if self.model is None:
-            print("Model not loaded. Please load or train the model first.")
-            return None
-
-        predictions = self.model.predict(features)
-        return predictions
+            raise ValueError("Model is not loaded. Load or train the model first.")
+        return self.model.predict(features)
 
 if __name__ == "__main__":
     # Example usage

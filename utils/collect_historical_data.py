@@ -1,71 +1,79 @@
-import yfinance as yf
+import MetaTrader5 as mt5
 import pandas as pd
+from datetime import datetime, timedelta
 
-class YahooFinanceDataCollector:
+def initialize_mt5():
     """
-    Collects historical Forex data for EUR/USD using Yahoo Finance.
+    Initialize the MetaTrader 5 connection.
     """
+    if not mt5.initialize():
+        print(f"Failed to initialize MT5: {mt5.last_error()}")
+        return False
+    print("MT5 initialized successfully.")
+    return True
 
-    def __init__(self, symbol="EURUSD=X"):
-        self.symbol = symbol
+def fetch_mt5_data(symbol, timeframe, start_date, end_date):
+    """
+    Fetch historical data from MT5.
 
-    def fetch_data(self, start_date, end_date, interval="1d"):
-        """
-        Fetch historical data for a given date range and interval.
+    Args:
+        symbol (str): Trading symbol (e.g., 'EURUSD').
+        timeframe (int): MT5 timeframe constant (e.g., mt5.TIMEFRAME_H1).
+        start_date (datetime): Start date for historical data.
+        end_date (datetime): End date for historical data.
 
-        :param start_date: Start date (YYYY-MM-DD)
-        :param end_date: End date (YYYY-MM-DD)
-        :param interval: Interval (e.g., '1d', '1wk', '1mo', '1h')
-        :return: DataFrame with historical data
-        """
-        print(f"Fetching data for {self.symbol} from {start_date} to {end_date} at {interval} interval...")
-        data = yf.download(
-            tickers=self.symbol,
-            start=start_date,
-            end=end_date,
-            interval=interval
-        )
+    Returns:
+        pd.DataFrame: Historical data as a Pandas DataFrame.
+    """
+    rates = mt5.copy_rates_range(symbol, timeframe, start_date, end_date)
+    if rates is None:
+        print(f"Failed to fetch data for {symbol}: {mt5.last_error()}")
+        return None
 
-        if data.empty:
-            raise Exception(f"No data fetched for {self.symbol} with interval {interval}.")
+    # Convert to DataFrame
+    df = pd.DataFrame(rates)
+    df['time'] = pd.to_datetime(df['time'], unit='s')  # Convert UNIX time to datetime
+    return df
 
-        # Format DataFrame
-        data.reset_index(inplace=True)
+def save_data_to_csv(data, symbol, timeframe_label, output_dir="data"):
+    """
+    Save historical data to CSV.
 
-        # Handle 'Datetime' for intraday data
-        date_column = "Datetime" if "Datetime" in data.columns else "Date"
-        data = data.rename(columns={
-            date_column: "date",
-            "Open": "open",
-            "High": "high",
-            "Low": "low",
-            "Close": "close",
-            "Adj Close": "adjusted_close",
-            "Volume": "volume"
-        })
-        return data[["date", "open", "high", "low", "close"]]
+    Args:
+        data (pd.DataFrame): Historical data.
+        symbol (str): Trading symbol.
+        timeframe_label (str): Timeframe label (e.g., '1h', '4h').
+        output_dir (str): Directory to save CSV files.
+    """
+    file_path = f"{output_dir}/{symbol}_{timeframe_label}.csv"
+    data.to_csv(file_path, index=False)
+    print(f"Data saved to {file_path}")
 
-    def save_to_csv(self, data, filename):
-        """
-        Save DataFrame to a CSV file.
+def main():
+    # Initialize MT5
+    if not initialize_mt5():
+        return
 
-        :param data: DataFrame to save
-        :param filename: File path for saving the data
-        """
-        data.to_csv(filename, index=False)
-        print(f"Data saved to {filename}")
+    # Define symbols, timeframes, and date range
+    symbols = ["EURUSD", "GBPUSD", "USDJPY"]
+    timeframes = {
+        "1h": mt5.TIMEFRAME_H1,
+        "4h": mt5.TIMEFRAME_H4,
+        "1d": mt5.TIMEFRAME_D1
+    }
+    start_date = datetime.now() - timedelta(days=3650)  # 1 year of data
+    end_date = datetime.now()
 
+    # Fetch and save data
+    for symbol in symbols:
+        for timeframe_label, timeframe_const in timeframes.items():
+            print(f"Fetching {symbol} ({timeframe_label})...")
+            data = fetch_mt5_data(symbol, timeframe_const, start_date, end_date)
+            if data is not None:
+                save_data_to_csv(data, symbol, timeframe_label)
+
+    # Shutdown MT5
+    mt5.shutdown()
 
 if __name__ == "__main__":
-    collector = YahooFinanceDataCollector(symbol="EURUSD=X")
-
-    # Define date range and intervals
-    start_date = "2025-01-01"
-    end_date = "2025-01-13"
-    interval = "1h"  # '1d' for daily data, '1h' for hourly
-
-    try:
-        data = collector.fetch_data(start_date=start_date, end_date=end_date, interval=interval)
-        collector.save_to_csv(data, "EURUSD_hourly.csv")
-    except Exception as e:
-        print(f"Error: {e}")
+    main()

@@ -1,81 +1,69 @@
 import pandas as pd
-import numpy as np
+import os
 
-def calculate_indicators(data):
-    """
-    Calculate technical indicators and add them to the dataset.
+class DataPreparer:
+    def calculate_indicators(self, data):
+        """
+        Calculate technical indicators and add them to the dataset.
+        """
+        try:
+            # RSI
+            delta = data["close"].diff()
+            gain = delta.where(delta > 0, 0).rolling(window=14).mean()
+            loss = -delta.where(delta < 0, 0).rolling(window=14).mean()
+            rs = gain / loss
+            data["RSI"] = 100 - (100 / (1 + rs))
 
-    :param data: DataFrame containing historical data with 'Close' column
-    :return: DataFrame with added features
-    """
-    # Calculate RSI
-    delta = data["Close"].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-    rs = gain / loss
-    data.loc[:, "RSI"] = 100 - (100 / (1 + rs))
+            # EMA
+            data["EMA"] = data["close"].ewm(span=14, adjust=False).mean()
 
-    # Calculate EMA
-    data.loc[:, "EMA"] = data["Close"].ewm(span=14, adjust=False).mean()
+            # ATR
+            high_low = data["high"] - data["low"]
+            high_close = abs(data["high"] - data["close"].shift())
+            low_close = abs(data["low"] - data["close"].shift())
+            tr = high_low.combine(high_close, max).combine(low_close, max)
+            data["ATR"] = tr.rolling(window=14).mean()
 
-    # Calculate ATR
-    high_low = data["High"] - data["Low"]
-    high_close = np.abs(data["High"] - data["Close"].shift())
-    low_close = np.abs(data["Low"] - data["Close"].shift())
-    tr = high_low.combine(high_close, max).combine(low_close, max)
-    data.loc[:, "ATR"] = tr.rolling(window=14).mean()
+            # Bollinger Bands
+            data["Bollinger_Mid"] = data["close"].rolling(window=20).mean()
+            data["Bollinger_Upper"] = data["Bollinger_Mid"] + 2 * data["close"].rolling(window=20).std()
+            data["Bollinger_Lower"] = data["Bollinger_Mid"] - 2 * data["close"].rolling(window=20).std()
 
-    # Calculate Bollinger Bands
-    data.loc[:, "Bollinger_Mid"] = data["Close"].rolling(window=20).mean()
-    data.loc[:, "Bollinger_Upper"] = data["Bollinger_Mid"] + 2 * data["Close"].rolling(window=20).std()
-    data.loc[:, "Bollinger_Lower"] = data["Bollinger_Mid"] - 2 * data["Close"].rolling(window=20).std()
+        except Exception as e:
+            print(f"Error calculating indicators: {e}")
+        return data
 
-    return data
+    def prepare_all(self):
+        """
+        Prepare all datasets in the input directory.
+        """
+        for file in os.listdir(self.input_dir):
+            if file.endswith(".csv"):
+                filepath = os.path.join(self.input_dir, file)
+                try:
+                    data = pd.read_csv(filepath)
 
-def generate_target(data):
-    """
-    Generate target column based on future price movement.
+                    # Ensure columns exist and convert types
+                    if "Datetime" in data.columns:
+                        data.rename(columns={"Datetime": "date"}, inplace=True)
+                    if "Date" in data.columns:
+                        data.rename(columns={"Date": "date"}, inplace=True)
 
-    :param data: DataFrame containing historical data with 'Close' column
-    :return: DataFrame with a target column
-    """
-    data["Future_Close"] = data["Close"].shift(-1)  # Next period close
-    data["target"] = np.where(data["Future_Close"] > data["Close"], 1, 0)  # Binary classification
-    data.drop(columns=["Future_Close"], inplace=True)
-    return data
+                    # Ensure numeric conversion
+                    for col in ["open", "high", "low", "close"]:
+                        data[col] = pd.to_numeric(data[col], errors="coerce")
 
-def prepare_dataset(input_file, output_file):
-    """
-    Prepare dataset with features and target column.
+                    # Convert 'date' column to datetime
+                    data["date"] = pd.to_datetime(data["date"])
 
-    :param input_file: Path to input CSV file containing historical data
-    :param output_file: Path to save the prepared dataset
-    """
-    try:
-        # Load historical data
-        data = pd.read_csv(input_file, parse_dates=["Date"])
-        data.sort_values(by="Date", inplace=True)
-        data.reset_index(drop=True, inplace=True)
+                    # Calculate indicators and drop rows with NaN
+                    data = self.calculate_indicators(data)
+                    data.dropna(inplace=True)
 
-        # Calculate indicators and generate target
-        print("Calculating indicators...")
-        data = calculate_indicators(data)
-        print("Indicators calculated:", data.columns.tolist())
+                    # Save prepared data
+                    output_path = os.path.join(self.output_dir, file)
+                    data.to_csv(output_path, index=False)
+                    print(f"Prepared data saved to {output_path}")
+                except Exception as e:
+                    print(f"Error preparing {file}: {e}")
 
-        print("Generating target column...")
-        data = generate_target(data)
-        print("Target column generated. Sample data:")
-        print(data.head())
-
-        # Drop rows with NaN values (from rolling calculations)
-        data.dropna(inplace=True)
-
-        # Save the prepared dataset
-        data.to_csv(output_file, index=False)
-        print(f"Prepared dataset saved to {output_file}")
-    except Exception as e:
-        print(f"Error preparing dataset: {str(e)}")
-
-if __name__ == "__main__":
-    # Example usage
-    prepare_dataset(input_file="EURUSD_daily_cleaned.csv", output_file="../training/training_data.csv")
